@@ -197,6 +197,24 @@
   .modal input:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-glow)}
   .modal-btns{display:flex;justify-content:flex-end;gap:8px}
   .mobtabs{display:none}
+  /* gist sync panel */
+  .gsync-panel{margin-top:14px;padding:10px 4px 0;border-top:1px solid rgba(255,255,255,.06)}
+  .gsync-toggle{font-family:var(--mono);font-size:0.5rem;letter-spacing:.14em;text-transform:uppercase;color:#6a5e7a;background:none;border:none;cursor:pointer;padding:2px 10px 8px;display:flex;align-items:center;gap:5px;width:100%}
+  .gsync-toggle:hover{color:#9B6FD0}
+  .gsync-toggle .gchev{font-size:0.5rem;transition:transform .15s;display:inline-block}
+  .gsync-toggle.open .gchev{transform:rotate(90deg)}
+  .gsync-fields{display:none;padding:6px 4px 4px}
+  .gsync-fields.open{display:block}
+  .gsync-row{display:grid;grid-template-columns:52px 1fr;align-items:center;gap:6px;margin-bottom:6px}
+  .gsync-row label{font-family:var(--mono);font-size:0.5rem;letter-spacing:.12em;text-transform:uppercase;color:#6a5e7a}
+  .gsync-row input{font-family:var(--mono);font-size:0.5625rem;color:#cdd4d0;background:#16101f;border:1px solid rgba(155,111,208,.2);border-radius:3px;padding:5px 7px;outline:none;min-width:0;width:100%}
+  .gsync-row input:focus{border-color:var(--accent-soft)}
+  .gsync-row input::placeholder{color:#3a2e4a}
+  .gsync-btns{display:flex;gap:5px;margin-top:6px}
+  .gsync-status{font-family:var(--mono);font-size:0.5rem;letter-spacing:.08em;color:#6a5e7a;margin-top:5px;min-height:1em;padding:0 2px}
+  .gsync-status.ok{color:#5b8c5b}
+  .gsync-status.err{color:#c0504a}
+  .gsync-status.busy{color:var(--gold)}
   @media (max-width:760px){
     .app{flex-direction:column;padding:14px 12px 50px}
     .tabs{display:none}
@@ -225,6 +243,28 @@
       </div>
     </div>
     <div id="tabsInner"></div>
+
+    <div class="gsync-panel">
+      <button class="gsync-toggle" id="gsyncToggle">
+        <span class="gchev">▶</span> Gist sync
+      </button>
+      <div class="gsync-fields" id="gsyncFields">
+        <div class="gsync-row">
+          <label>Token</label>
+          <input type="password" id="gsyncToken" placeholder="ghp_…" autocomplete="off">
+        </div>
+        <div class="gsync-row">
+          <label>Gist ID</label>
+          <input type="text" id="gsyncId" placeholder="abc123…" autocomplete="off">
+        </div>
+        <div class="gsync-btns">
+          <button class="sbtn" id="gsyncSave">Save credentials</button>
+          <button class="sbtn" id="gsyncPull">Pull</button>
+          <button class="sbtn" id="gsyncPush">Push</button>
+        </div>
+        <div class="gsync-status" id="gsyncStatus"></div>
+      </div>
+    </div>
   </nav>
 
   <main class="page">
@@ -520,8 +560,20 @@ function setScale(d) {
   toast("Text size " + Math.round(v*100) + "%" + (v===1.5?" (max)":v===0.85?" (min)":""));
 }
 
-let saveT;
-function queueSave() { setSave(false); clearTimeout(saveT); saveT=setTimeout(doSave,600); }
+let saveT, gistPushTimer;
+function queueSave() {
+  setSave(false);
+  clearTimeout(saveT);
+  saveT = setTimeout(() => {
+    saveSeriesData();
+    // auto-push to Gist 4 seconds after last change
+    const {token, gistId} = gistCreds();
+    if(token && gistId) {
+      clearTimeout(gistPushTimer);
+      gistPushTimer = setTimeout(() => gistPush(true), 4000);
+    }
+  }, 600);
+}
 function doSave() { saveSeriesData(); }
 function setSave(s) {
   const dot=el("dot"), t=el("savetxt");
@@ -1221,6 +1273,126 @@ function toast(msg){
 
 /* ===== UTILS ===== */
 
+/* ===== GIST SYNC ===== */
+const LS_GIST_TOKEN = "sm-bible:gist-token";
+const LS_GIST_ID    = "sm-bible:gist-id";
+const GIST_FILENAME = "story-bible-data.json";
+
+function gistCreds() {
+  let token="", gistId="";
+  try { token=localStorage.getItem(LS_GIST_TOKEN)||""; } catch(_){}
+  try { gistId=localStorage.getItem(LS_GIST_ID)||""; } catch(_){}
+  return {token, gistId};
+}
+function gistStatus(msg, kind) {
+  const el_=el("gsyncStatus");
+  if(!el_) return;
+  el_.textContent = msg;
+  el_.className = "gsync-status" + (kind ? " "+kind : "");
+}
+
+async function gistPush(silent) {
+  const {token, gistId} = gistCreds();
+  if(!token || !gistId) {
+    if(!silent) gistStatus("Set token and Gist ID first.", "err");
+    return false;
+  }
+  gistStatus("Pushing…", "busy");
+  // Build full payload: index + all series data
+  const payload = { version: VERSION, savedAt: new Date().toISOString(), index: idx, series: {} };
+  idx.seriesList.forEach(s => {
+    try {
+      const raw = localStorage.getItem(LS_DATA(s.id));
+      payload.series[s.id] = raw ? JSON.parse(raw) : blankData(s.name);
+    } catch(_) {
+      payload.series[s.id] = blankData(s.name);
+    }
+  });
+  // Always include active series current state
+  payload.series[activeId] = JSON.parse(JSON.stringify(data));
+
+  try {
+    const res = await fetch("https://api.github.com/gists/" + gistId, {
+      method: "PATCH",
+      headers: { "Authorization": "token " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({ files: { [GIST_FILENAME]: { content: JSON.stringify(payload, null, 2) } } })
+    });
+    if(!res.ok) { const e=await res.json(); gistStatus("Push failed: " + (e.message||res.status), "err"); return false; }
+    gistStatus("Pushed " + new Date().toLocaleTimeString(), "ok");
+    setSave(true);
+    return true;
+  } catch(e) {
+    gistStatus("Network error: " + e.message, "err");
+    return false;
+  }
+}
+
+async function gistPull() {
+  const {token, gistId} = gistCreds();
+  if(!token || !gistId) { gistStatus("Set token and Gist ID first.", "err"); return; }
+  gistStatus("Pulling…", "busy");
+  try {
+    const res = await fetch("https://api.github.com/gists/" + gistId, {
+      headers: { "Authorization": "token " + token }
+    });
+    if(!res.ok) { const e=await res.json(); gistStatus("Pull failed: " + (e.message||res.status), "err"); return; }
+    const gist = await res.json();
+    const file = gist.files[GIST_FILENAME];
+    if(!file) { gistStatus("File not found in Gist.", "err"); return; }
+    const payload = JSON.parse(file.content);
+    if(!payload.series) { gistStatus("Unrecognised format.", "err"); return; }
+    // Merge series into localStorage
+    Object.entries(payload.series).forEach(([id, seriesData]) => {
+      try { localStorage.setItem(LS_DATA(id), JSON.stringify(seriesData)); } catch(_){}
+    });
+    // Restore index
+    if(payload.index) {
+      idx = payload.index;
+      try { localStorage.setItem(LS_INDEX, JSON.stringify(idx)); } catch(_){}
+    }
+    // Reload active series
+    if(!idx.seriesList.find(s=>s.id===activeId)) activeId = idx.seriesList[0].id;
+    data = loadSeriesData(activeId);
+    applyScale(); updateSeriesUI(); renderTabs(); renderView();
+    gistStatus("Pulled " + new Date().toLocaleTimeString(), "ok");
+    toast("Pulled from Gist");
+  } catch(e) {
+    gistStatus("Error: " + e.message, "err");
+  }
+}
+
+function initGistUI() {
+  const {token, gistId} = gistCreds();
+  const tokenEl = el("gsyncToken"), idEl = el("gsyncId");
+  if(tokenEl) tokenEl.value = token ? "••••••••" : "";
+  if(idEl) idEl.value = gistId || "";
+
+  el("gsyncToggle").onclick = () => {
+    const toggle = el("gsyncToggle"), fields = el("gsyncFields");
+    toggle.classList.toggle("open");
+    fields.classList.toggle("open");
+  };
+
+  el("gsyncSave").onclick = () => {
+    const t = el("gsyncToken").value.trim();
+    const g = el("gsyncId").value.trim();
+    if(!t || !g) { gistStatus("Both fields required.", "err"); return; }
+    // Only update token if it's not the masked placeholder
+    if(t !== "••••••••") {
+      try { localStorage.setItem(LS_GIST_TOKEN, t); } catch(_){}
+      el("gsyncToken").value = "••••••••";
+    }
+    try { localStorage.setItem(LS_GIST_ID, g); } catch(_){}
+    gistStatus("Credentials saved.", "ok");
+    toast("Gist credentials saved");
+  };
+
+  el("gsyncPush").onclick = () => gistPush(false);
+  el("gsyncPull").onclick = () => gistPull();
+}
+
+// Auto-push is wired into queueSave above
+
 /* ===== INIT ===== */
 (function init(){
   loadIndex();
@@ -1252,6 +1424,15 @@ function toast(msg){
 
   // keyboard: Escape closes drawer
   document.addEventListener("keydown",e=>{if(e.key==="Escape"&&el("drawer").classList.contains("open"))closeDrawer();});
+
+  // Gist sync
+  initGistUI();
+  // Override queueSave to also trigger gist push
+  const _queueSave = queueSave;
+  window._gistAutoSave = () => {
+    const {token, gistId} = gistCreds();
+    if(token && gistId) { clearTimeout(gistPushTimer); gistPushTimer = setTimeout(()=>gistPush(true), 4000); }
+  };
 })();
 </script>
 </body>
