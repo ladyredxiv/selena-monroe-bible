@@ -271,6 +271,10 @@
 
 <div class="toast" id="toast"></div>
 <script>
+/* ===== UTILS ===== */
+const el=id=>document.getElementById(id);
+const esc=s=>(s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
 /* ===== SCHEMA ===== */
 const SCHEMA = [
   {key:"overview", label:"Overview", single:true, group:"Story",
@@ -480,7 +484,7 @@ function loadIndex() {
 }
 function saveIndex() {
   idx.activeSeries = activeId;
-  localStorage.setItem(LS_INDEX, JSON.stringify(idx));
+  try { localStorage.setItem(LS_INDEX, JSON.stringify(idx)); } catch(_){}
 }
 function loadSeriesData(id) {
   try { const raw = localStorage.getItem(LS_DATA(id)); if(raw) return JSON.parse(raw); } catch(_){}
@@ -488,7 +492,7 @@ function loadSeriesData(id) {
   return blankData(name);
 }
 function saveSeriesData() {
-  localStorage.setItem(LS_DATA(activeId), JSON.stringify(data));
+  try { localStorage.setItem(LS_DATA(activeId), JSON.stringify(data)); } catch(_){}
   saveIndex();
   setSave(true);
 }
@@ -560,7 +564,7 @@ function seriesModal(mode) {
       const id=uid();
       idx.seriesList.push({id,name});
       saveIndex();
-      localStorage.setItem(LS_DATA(id), JSON.stringify(blankData(name)));
+      try { localStorage.setItem(LS_DATA(id), JSON.stringify(blankData(name))); } catch(_){}
       switchSeries(id);
     }else{
       const s=idx.seriesList.find(s=>s.id===activeId);
@@ -574,7 +578,7 @@ function deleteSeries() {
   if(idx.seriesList.length<=1){toast("Can't delete the only series.");return;}
   const name=(idx.seriesList.find(s=>s.id===activeId)||{}).name||"this series";
   if(!confirm(`Delete "${name}" and all its data? This cannot be undone.`))return;
-  localStorage.removeItem(LS_DATA(activeId));
+  try { localStorage.removeItem(LS_DATA(activeId)); } catch(_){}
   idx.seriesList = idx.seriesList.filter(s=>s.id!==activeId);
   switchSeries(idx.seriesList[0].id);
   saveIndex();
@@ -1089,7 +1093,7 @@ function restoreAll(file){
       const payload=JSON.parse(e.target.result);
       if(payload.series){
         Object.entries(payload.series).forEach(([id,entry])=>{
-          localStorage.setItem(LS_DATA(id),JSON.stringify(entry.data));
+          try { localStorage.setItem(LS_DATA(id),JSON.stringify(entry.data)); } catch(_){}
           if(!idx.seriesList.find(s=>s.id===id))idx.seriesList.push(entry.meta);
         });
         saveIndex();switchSeries(activeId);toast("Backup restored.");
@@ -1216,8 +1220,6 @@ function toast(msg){
 }
 
 /* ===== UTILS ===== */
-const el=id=>document.getElementById(id);
-const esc=s=>(s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* ===== INIT ===== */
 (function init(){
