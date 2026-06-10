@@ -1053,8 +1053,11 @@ function downloadFile(content,name,type){
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([content],{type}));a.download=name;a.click();
 }
 function toCSV(rows){
-  return rows.map(r=>r.map(c=>{const s=String(c??""),(needs=s.includes(",")||s.includes('"')||s.includes("\n"));
-    return needs?'"'+s.replace(/"/g,'""')+'"':s;}).join(",")).join("\n");
+  return rows.map(r=>r.map(c=>{
+    const s=String(c==null?"":c);
+    const needs=s.includes(",")||s.includes('"')||s.includes("\n");
+    return needs?'"'+s.replace(/"/g,'""')+'"':s;
+  }).join(",")).join("\n");
 }
 function exportSection(s,fmt){
   const items=data.sections[s.key]||[];
