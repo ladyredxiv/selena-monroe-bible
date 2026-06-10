@@ -323,7 +323,7 @@ const SCHEMA = [
      {k:"knows", label:"Knows by now", t:"area", ph:"What they've learned — and what they still don't know."},
      {k:"change",label:"What changes", t:"area", ph:"What this book does to them."},
    ]},
-  {key:"locations", label:"Places", titleLabel:"Name", ph:"a place", group:"World",
+  {key:"locations", label:"Places", titleLabel:"Name", ph:"a place", group:"World", swExport:"world",
    lead:"Settings and geography. Where the story physically happens.",
    tagField:"type",
    fields:[
@@ -333,7 +333,7 @@ const SCHEMA = [
      {k:"atmos",  label:"Atmosphere", t:"area", ph:"Sensory detail — light, sound, smell."},
      {k:"signif", label:"Significance", t:"area", ph:"Why it matters to the plot."},
    ]},
-  {key:"lore", label:"World & Lore", titleLabel:"Concept", ph:"a piece of lore", group:"World",
+  {key:"lore", label:"World & Lore", titleLabel:"Concept", ph:"a piece of lore", group:"World", swExport:"world",
    lead:"The rules of your world — magic, gods, politics. Especially the limits.",
    tagField:"cat",
    fields:[
@@ -342,7 +342,7 @@ const SCHEMA = [
      {k:"rules",   label:"Rules / limits / cost", t:"area", ph:"What it can't do is the interesting part."},
      {k:"history", label:"Origin & history", t:"area"},
    ]},
-  {key:"items", label:"Items & Artifacts", titleLabel:"Name", ph:"an item", groupBy:"type", groupNoun:"item", group:"World",
+  {key:"items", label:"Items & Artifacts", titleLabel:"Name", ph:"an item", groupBy:"type", groupNoun:"item", group:"World", swExport:"world",
    lead:"Objects that matter as much as characters — weapons, relics, MacGuffins. Grouped by type.",
    fields:[
      {k:"type",   label:"Type", t:"line", suggest:["Weapon","Relic","Artifact","Document","Tool","Key item","Vehicle","Treasure"], ph:"Weapon, relic, document…"},
@@ -376,7 +376,7 @@ const SCHEMA = [
      {k:"hook",    label:"Hook into the next", t:"area", ph:"The question or cliffhanger that pulls the reader onward."},
      {k:"resolve", label:"Resolution", t:"area"},
    ]},
-  {key:"outline", label:"Outline", titleLabel:"Scene name", ph:"a scene", groupBy:"chapter", groupNoun:"scene", sortBy:"no", group:"Story",
+  {key:"outline", label:"Outline", titleLabel:"Scene name", ph:"a scene", groupBy:"chapter", groupNoun:"scene", sortBy:"no", group:"Story", swExport:"outline",
    lead:"Your scene-by-scene plan, grouped into chapters and ordered by scene number.",
    tagField:"no",
    fields:[
@@ -398,7 +398,7 @@ const SCHEMA = [
      {k:"payoff",  label:"The payoff", t:"area", ph:"What it should pay off into."},
      {k:"payArc",  label:"Pays off in", t:"ref", ref:"arcs"},
    ]},
-  {key:"factions", label:"Factions", titleLabel:"Name", ph:"a faction", group:"World",
+  {key:"factions", label:"Factions", titleLabel:"Name", ph:"a faction", group:"World", swExport:"world",
    lead:"Groups, organizations, and powers that act in the world.",
    tagField:"type",
    fields:[
@@ -414,6 +414,15 @@ const SCHEMA = [
    fields:[
      {k:"cat", label:"Category", t:"line", ph:"Place, item, slang, title…"},
      {k:"def", label:"Definition", t:"area"},
+   ]},
+  {key:"sudowrite", label:"Sudowrite", single:true, group:"Craft",
+   lead:"Inputs for Sudowrite's Story Bible. Fill these in here, then Copy as Markdown and paste them across when you're ready to draft.",
+   fields:[
+     {k:"braindump", label:"Braindump", t:"area", ph:"Everything in your head about the story, unstructured. Sudowrite's starting point."},
+     {k:"genre",     label:"Genre", t:"area", ph:"Genre and subgenre, plus comp titles."},
+     {k:"style",     label:"Style", t:"area", ph:"The prose style to match — describe it, or paste a sample passage."},
+     {k:"synopsis",  label:"Synopsis", t:"area", ph:"The whole story start to finish, including the ending."},
+     {k:"guide",     label:"Writing guide", t:"area", ph:"Rules for the prose — what to lean into, what to avoid, tics to keep out."},
    ]},
   {key:"continuity", label:"Continuity & Style", titleLabel:"Item", ph:"a ruling", groupBy:"kind", groupNoun:"item", group:"Craft",
    lead:"The consistency ledger: settled facts and prose conventions, so every book matches.",
@@ -451,7 +460,7 @@ function blankData(name) {
   return {
     title: name || "",
     sections: {characters:[],relationships:[],states:[],locations:[],lore:[],items:[],timeline:[],arcs:[],outline:[],threads:[],factions:[],glossary:[],continuity:[]},
-    singles: {overview:{},notes:{}},
+    singles: {overview:{},sudowrite:{},notes:{}},
     ui: {scale:1}
   };
 }
@@ -636,6 +645,8 @@ function listHTML(s){
     mItems.push(`<button class="mitem" data-exp="json">JSON file</button>`);
     mItems.push(`<button class="mitem" data-md>Copy as Markdown</button>`);
   }
+  if(s.swExport==="world") mItems.push(`<button class="mitem" data-sw="world" title="One CSV of all Places, Lore, Items &amp; Factions for Sudowrite worldbuilding import">Sudowrite worldbuilding CSV</button>`);
+  if(s.swExport==="outline") mItems.push(`<button class="mitem" data-sw="outline" title="Copy chapters &amp; beats as text for Sudowrite Outline">Copy outline for Sudowrite</button>`);
   const menu=mItems.length?`<details class="menu"><summary class="tbtn sm" title="Export this section">Export ▾</summary><div class="menupop">${mItems.join("")}</div></details>`:"";
   const io=`<button class="tbtn sm" data-imp title="Import entries from a CSV or JSON file">Import</button>`;
   const exp=`<span class="expgrp">${menu}${io}</span>`;
@@ -772,6 +783,7 @@ function bindView(s){
     document.querySelectorAll("[data-add]").forEach(b=>b.onclick=()=>openEditor(s,null));
     const closeMenus=()=>document.querySelectorAll("details.menu[open]").forEach(d=>d.removeAttribute("open"));
     document.querySelectorAll("[data-exp]").forEach(b=>b.onclick=()=>{closeMenus();exportSection(s,b.dataset.exp);});
+    document.querySelectorAll("[data-sw]").forEach(b=>b.onclick=()=>{closeMenus();b.dataset.sw==="world"?exportWorldCSV():copyOutlineForSudowrite();});
     document.querySelectorAll("[data-md]").forEach(b=>b.onclick=()=>{closeMenus();copyText(sectionMarkdown(s),s.label+" copied as Markdown");});
     document.querySelectorAll("[data-imp]").forEach(b=>b.onclick=()=>{importTarget=s.key;el("sfile").click();});
     if(!s.sortBy){
@@ -1124,6 +1136,45 @@ function parseCSVRow(line){
     else if(c===","&&!inQ){result.push(cur);cur="";}
     else cur+=c;}
   result.push(cur);return result;
+}
+
+/* ===== SUDOWRITE EXPORTS ===== */
+function exportWorldCSV(){
+  const worldKeys=["locations","lore","items","factions"];
+  const rows=[["Type","Name","Description","Details","Significance"]];
+  worldKeys.forEach(k=>{
+    const s=SECT[k];
+    (data.sections[k]||[]).forEach(it=>{
+      const desc=it.desc||it.summary||it.def||"";
+      const details=[it.rules,it.history,it.atmos,it.powers,it.goal,it.ties].filter(Boolean).join(" | ");
+      const sig=it.signif||"";
+      rows.push([s.label,displayTitle(s,it),desc,details,sig]);
+    });
+  });
+  const serName=(idx.seriesList.find(x=>x.id===activeId)||{}).name||"series";
+  downloadFile(toCSV(rows),`${serName}-sudowrite-world.csv`,"text/csv");
+  toast("Sudowrite worldbuilding CSV exported");
+}
+function copyOutlineForSudowrite(){
+  const scenes=data.sections.outline||[];
+  if(!scenes.length){toast("No scenes in Outline yet.");return;}
+  const byChapter=new Map();
+  scenes.forEach(sc=>{
+    const ch=(sc.chapter||"Unassigned").trim();
+    if(!byChapter.has(ch))byChapter.set(ch,[]);
+    byChapter.get(ch).push(sc);
+  });
+  const blocks=[];
+  byChapter.forEach((its,ch)=>{
+    const sorted=sortItems(SECT.outline,its);
+    blocks.push(`## ${ch}\n\n`+sorted.map(sc=>{
+      const lines=[`### ${displayTitle(SECT.outline,sc)}`];
+      if(sc.summary)lines.push(sc.summary);
+      if(sc.beats)lines.push(`**Beats:**\n${sc.beats}`);
+      return lines.join("\n\n");
+    }).join("\n\n"));
+  });
+  copyText(blocks.join("\n\n---\n\n"),"Outline copied for Sudowrite");
 }
 
 /* ===== MARKDOWN ===== */
